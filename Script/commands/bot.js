@@ -71,7 +71,7 @@ module.exports.handleEvent = async function({ api, event, args, Threads, Users }
    };
 
   if ((event.body.toLowerCase() == "admin") || (event.body.toLowerCase() == "boter admin")) {
-     return api.sendMessage("He is Ullash ッ❤️ তাকে সবাই উল্লাস নামে  চিনে🤙", threadID);
+     return api.sendMessage("He is kobi ッ❤️ তাকে সবাই মনির নামে  চিনে🤙", threadID);
    };
 
    if ((event.body.toLowerCase() == "ai") || (event.body.toLowerCase() == "Ai")) {
@@ -107,8 +107,8 @@ module.exports.handleEvent = async function({ api, event, args, Threads, Users }
      return api.sendMessage("খবরদার কেউ এই নাম দরে ডাক দিবানা এটা আমার বস উল্লাস এর বউ এর নাম..!😠🥰⛏️", threadID);
    };
 
-  if ((event.body.toLowerCase() == "@MD Shiam Tafeder ") || (event.body.toLowerCase() == "সিয়াম")) {
-     return api.sendMessage("🥰-সিয়াম-🌺 আমার বস উল্লাস'র বন্ধু লাগে লুচ্ছি বেডি'রা দূরে থাক😠🥰⛏️", threadID);
+  if ((event.body.toLowerCase() == "@Santo Vai ") || (event.body.toLowerCase() == "সিয়াম")) {
+     return api.sendMessage("🥰-শান্ত ভাইয়ের আজ মুসলমানি সবার দাওয়াত রইলো🥰⛏️", threadID);
    };
 
    if ((event.body.toLowerCase() == "KISS ME") || (event.body.toLowerCase() == "kiss me")) {
