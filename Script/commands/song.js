@@ -1,107 +1,132 @@
-const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
-const ytSearch = require("yt-search");
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
-module.exports = {
- config: {
- name: "song",
- version: "1.0.3",
- hasPermssion: 0,
- credits: "𝐂𝐘𝐁𝐄𝐑 ☢️_𖣘 -𝐁𝐎𝐓 ⚠️ 𝑻𝑬𝑨𝑴_ ☢️",
- description: "Download YouTube song from keyword search and link",
- commandCategory: "Media",
- usages: "[songName] [type]",
- cooldowns: 5,
- dependencies: {
- "node-fetch": "",
- "yt-search": "",
- },
- },
+const YTSEARCH_API_URL = 'https://nexalo-api.vercel.app/api/ytsearch';
+const YTMP3DL_API_URL = 'https://nexalo-api.vercel.app/api/ytmp3dl';
 
- run: async function ({ api, event, args }) {
- let songName, type;
+module.exports.config = {
+  name: "sing",
+  aliases: [],
+  version: "1.0",
+  author: "Hridoy",
+  countDown: 5,
+  adminOnly: false,
+  description: "Search and download a song as an MP3 file by its name 🎵",
+  category: "Music",
+  guide: "{pn}sing [music name] - Search and download a song as an MP3",
+  usePrefix: true
+};
 
- if (
- args.length > 1 &&
- (args[args.length - 1] === "audio" || args[args.length - 1] === "video")
- ) {
- type = args.pop();
- songName = args.join(" ");
- } else {
- songName = args.join(" ");
- type = "audio";
- }
+module.exports.run = async function({ api, event, args, getText }) {
+  const { threadID, messageID, senderID } = event;
 
- const processingMessage = await api.sendMessage(
- "✅ Processing your request. Please wait...",
- event.threadID,
- null,
- event.messageID
- );
+  try {
+    // Extract the music name from args
+    const musicName = args.join(' ').trim();
+    if (!musicName) {
+      api.setMessageReaction("❌", messageID, () => {}, true);
+      return api.sendMessage(getText("sing", "missingMusicName"), threadID, messageID);
+    }
 
- try {
- const searchResults = await ytSearch(songName);
- if (!searchResults || !searchResults.videos.length) {
- throw new Error("No results found for your search query.");
- }
+    // Fetch the sender's name (for logging purposes only)
+    const userInfo = await new Promise((resolve, reject) => {
+      api.getUserInfo([senderID], (err, info) => {
+        if (err) reject(err);
+        else resolve(info);
+      });
+    });
+    const userName = userInfo[senderID]?.name || "Unknown User";
 
- const topResult = searchResults.videos[0];
- const videoId = topResult.videoId;
+    // Step 1: Search for the music using the first API
+    const searchUrl = `${YTSEARCH_API_URL}?query=${encodeURIComponent(musicName)}`;
+    const searchResponse = await axios.get(searchUrl, { timeout: 10000 });
 
- const apiKey = "priyansh-here";
- const apiUrl = `https://priyansh-ai.onrender.com/youtube?id=${videoId}&type=${type}&apikey=${apiKey}`;
+    // Validate search API response
+    if (!searchResponse.data || searchResponse.data.code !== 200 || !searchResponse.data.data || searchResponse.data.data.length === 0) {
+      throw new Error("No music found for the given query");
+    }
 
- api.setMessageReaction("⌛", event.messageID, () => {}, true);
+    // Get the first video's details
+    const firstVideo = searchResponse.data.data[0];
+    const videoUrl = firstVideo.url;
+    const title = firstVideo.title;
+    const duration = firstVideo.duration;
 
- const downloadResponse = await axios.get(apiUrl);
- const downloadUrl = downloadResponse.data.downloadUrl;
+    // Step 2: Get the MP3 download URL using the second API
+    const downloadUrl = `${YTMP3DL_API_URL}?url=${encodeURIComponent(videoUrl)}`;
+    const downloadResponse = await axios.get(downloadUrl, { timeout: 10000 });
 
- const safeTitle = topResult.title.replace(/[^a-zA-Z0-9 \-_]/g, "");
- const filename = `${safeTitle}.${type === "audio" ? "mp3" : "mp4"}`;
- const downloadPath = path.join(__dirname, "cache", filename);
+    // Validate download API response
+    if (!downloadResponse.data || !downloadResponse.data.success || !downloadResponse.data.download_url) {
+      throw new Error("Failed to retrieve MP3 download URL");
+    }
 
- if (!fs.existsSync(path.dirname(downloadPath))) {
- fs.mkdirSync(path.dirname(downloadPath), { recursive: true });
- }
+    const mp3DownloadUrl = downloadResponse.data.download_url;
 
- const response = await axios({
- url: downloadUrl,
- method: "GET",
- responseType: "stream",
- });
+    // Create a temporary file path for the MP3
+    const tempDir = path.join(__dirname, '..', '..', 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const fileName = `music_${crypto.randomBytes(8).toString('hex')}.mp3`;
+    const filePath = path.join(tempDir, fileName);
 
- const fileStream = fs.createWriteStream(downloadPath);
- response.data.pipe(fileStream);
+    // Step 3: Download the MP3 file
+    const mp3Response = await axios.get(mp3DownloadUrl, {
+      responseType: 'stream',
+      timeout: 15000
+    });
 
- await new Promise((resolve, reject) => {
- fileStream.on("finish", resolve);
- fileStream.on("error", reject);
- });
+    // Verify the content type to ensure it's an audio file
+    const contentType = mp3Response.headers['content-type'];
+    if (!contentType || !contentType.startsWith('audio/')) {
+      throw new Error("Downloaded content is not an audio file");
+    }
 
- api.setMessageReaction("✅", event.messageID, () => {}, true);
+    // Save the MP3 to a temporary file
+    const writer = fs.createWriteStream(filePath);
+    mp3Response.data.pipe(writer);
 
- await api.sendMessage(
- {
- attachment: fs.createReadStream(downloadPath),
- body: `🖤 Title: ${topResult.title}\n\n Here is your ${
- type === "audio" ? "audio" : "video"
- } 🎧:`,
- },
- event.threadID,
- () => {
- fs.unlinkSync(downloadPath);
- api.unsendMessage(processingMessage.messageID);
- },
- event.messageID
- );
- } catch (error) {
- console.error(`Failed to download and send song: ${error.message}`);
- api.sendMessage(
- `Failed to download song: ${error.message}`,
- event.threadID,
- event.messageID
- );
- }
- },
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    // Check if the file is empty
+    const stats = fs.statSync(filePath);
+    if (stats.size === 0) throw new Error("Downloaded MP3 file is empty");
+
+    // Construct the message
+    const msg = {
+      body: getText("sing", "success", title, duration),
+      attachment: fs.createReadStream(filePath)
+    };
+
+    // Send the message with the MP3 attachment
+    await new Promise((resolve, reject) => {
+      api.sendMessage(msg, threadID, (err) => {
+        if (err) return reject(err);
+        api.setMessageReaction("🎵", messageID, () => {}, true);
+        resolve();
+      }, messageID);
+    });
+
+    // Delete the temporary file after sending
+    fs.unlinkSync(filePath);
+    console.log(`[Sing Command] Downloaded "${title}" (${duration}) for ${userName}`);
+  } catch (err) {
+    console.error("[Sing Command Error]", err.message);
+    api.setMessageReaction("❌", messageID, () => {}, true);
+    api.sendMessage(getText("sing", "error", err.message), threadID, messageID);
+
+    // Ensure the temporary file is deleted even if sending fails
+    const tempDir = path.join(__dirname, '..', '..', 'temp');
+    const fileName = `music_${crypto.randomBytes(8).toString('hex')}.mp3`;
+    const filePath = path.join(tempDir, fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
 };
